@@ -62,7 +62,8 @@ class _DispatcherRequestsScreenState extends State<DispatcherRequestsScreen> {
                 trailing: isCurrent ? const Icon(Icons.check, color: Colors.green) : null,
                 onTap: () async {
                   Navigator.pop(context);
-                  await _service.updateRequestStatus(request.id, status);
+                  // Передаем весь объект request, чтобы сервис мог взять из него userId и тип транспорта для пуша
+                  await _service.updateRequestStatus(request, status);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
