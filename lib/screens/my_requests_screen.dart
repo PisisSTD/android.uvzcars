@@ -5,6 +5,7 @@ import 'create_request_screen.dart';
 import 'login_screen.dart';
 import 'request_detail_screen.dart';
 import 'profile_screen.dart';
+import 'users_list_screen.dart';
 
 class MyRequestsScreen extends StatefulWidget {
   final AppUser currentUser;
@@ -49,6 +50,16 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
       backgroundColor: Colors.grey[100],
       appBar: AppBar(
         title: const Text('Мои заявки'),
+        leading: IconButton(
+          icon: const Icon(Icons.people_outline, color: Colors.blueGrey),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => UsersListScreen()),
+            );
+          },
+          tooltip: 'Заводская сеть',
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.account_circle_outlined),
@@ -80,23 +91,26 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                     const Icon(Icons.error_outline, color: Colors.red, size: 80),
                     const SizedBox(height: 20),
                     const Text(
-                      'НЕОБХОДИМА НАСТРОЙКА FIRESTORE',
+                      'ТРЕБУЕТСЯ НАСТРОЙКА FIRESTORE',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 18),
+                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 20),
                     ),
                     const SizedBox(height: 12),
                     const Text(
                       'Для работы приложения нужно создать индекс. Зажмите и выделите ссылку в рамке ниже, скопируйте её и откройте в браузере:',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.black, fontSize: 15, fontWeight: FontWeight.w500),
+                      style: TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 20),
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: Colors.white,
                         border: Border.all(color: Colors.red, width: 2),
                         borderRadius: BorderRadius.circular(12),
+                        boxShadow: [
+                          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)
+                        ],
                       ),
                       child: SelectableText(
                         '${snapshot.error}',
@@ -108,12 +122,6 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
                           fontWeight: FontWeight.bold
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'После создания индекса в консоли Firebase подождите 2-3 минуты, и список заявок загрузится автоматически.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.grey, fontSize: 13),
                     ),
                   ],
                 ),

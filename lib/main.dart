@@ -5,12 +5,9 @@ import 'screens/home_screen.dart';
 void main() async {
   try {
     WidgetsFlutterBinding.ensureInitialized();
-    // Инициализируем Firebase. Если файл google-services.json на месте, 
-    // пустые аргументы инициализируют платформу по умолчанию.
     await Firebase.initializeApp();
-    runApp(MyApp());
+    runApp(const MyApp());
   } catch (e) {
-    // Если Firebase упадет, мы увидим это на экране телефона
     debugPrint("Firebase Error: $e");
     runApp(MaterialApp(
       home: Scaffold(
@@ -30,17 +27,20 @@ void main() async {
 }
 
 class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Диспетчер ТС', // Измененное название
+      title: 'Диспетчер ТС',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.light),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey, brightness: Brightness.light),
       ),
       darkTheme: ThemeData(
         useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.blueGrey, brightness: Brightness.dark),
       ),
       themeMode: ThemeMode.system,
       home: HomeScreen(),

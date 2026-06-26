@@ -6,25 +6,32 @@ import 'my_requests_screen.dart';
 import 'dispatcher_requests_screen.dart';
 import 'login_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
   final FirebaseService _service = FirebaseService();
 
   @override
   Widget build(BuildContext context) {
-    // Используем StreamBuilder для отслеживания состояния авторизации в реальном времени
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnapshot) {
+        // Ждем, пока Firebase проверит наличие сохраненной сессии
         if (authSnapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        // Если пользователь не авторизован в Firebase Auth
+        // Если сессии нет — на экран логина
         if (!authSnapshot.hasData) {
           return const LoginScreen();
         }
 
-        // Если авторизован, загружаем его профиль из Firestore
+        // Если сессия есть, загружаем профиль из Firestore
         return FutureBuilder<AppUser?>(
           future: _service.getCurrentAppUser(),
           builder: (context, userSnapshot) {
@@ -32,17 +39,17 @@ class HomeScreen extends StatelessWidget {
               return const Scaffold(body: Center(child: CircularProgressIndicator()));
             }
 
-            if (userSnapshot.hasError) {
+            final user = userSnapshot.data;
+
+            if (user == null) {
               return Scaffold(
                 body: Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.error_outline, color: Colors.red, size: 60),
-                      const SizedBox(height: 16),
-                      Text("Ошибка Firestore: ${userSnapshot.error}"),
+                      const Text("Ошибка: Профиль не найден"),
                       ElevatedButton(
-                        onPressed: () => FirebaseAuth.instance.signOut(),
+                        onPressed: () => _service.signOut(),
                         child: const Text("Выйти"),
                       )
                     ],
@@ -51,40 +58,13 @@ class HomeScreen extends StatelessWidget {
               );
             }
 
-            final user = userSnapshot.data;
-
-            // Если профиль в Firestore не найден
-            if (user == null) {
-              return Scaffold(
-                body: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.person_off, color: Colors.orange, size: 60),
-                      const SizedBox(height: 16),
-                      const Text("Профиль пользователя не найден в базе данных (коллекция 'users')."),
-                      const Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: Text(
-                          "Убедитесь, что в Firestore создан документ с вашим UID.",
-                          textAlign: TextAlign.center,
-                        ),
-                      ),
-                      Text("Ваш UID: ${authSnapshot.data!.uid}", style: const TextStyle(fontSize: 10)),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: () => FirebaseAuth.instance.signOut(),
-                        child: const Text("Назад к логину"),
-                      )
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            // Если всё хорошо, переходим к экранам по ролям
+            // ПРИ КАЖДОМ ВХОДЕ (в т.ч. автоматическом):
+            // 1. Ставим статус online
+            _service.updateUserStatus('online');
+            // 2. Настраиваем пуши (токен обновится в базе)
             _service.setupPushNotifications();
 
+            // Перенаправляем на нужный экран
             if (user.role == 'dispatcher') {
               return DispatcherRequestsScreen(currentUser: user);
             } else {

@@ -4,6 +4,7 @@ import '../models/app_models.dart';
 import 'login_screen.dart';
 import 'request_detail_screen.dart';
 import 'profile_screen.dart';
+import 'users_list_screen.dart';
 
 class DispatcherRequestsScreen extends StatefulWidget {
   final AppUser currentUser;
@@ -62,7 +63,6 @@ class _DispatcherRequestsScreenState extends State<DispatcherRequestsScreen> {
                 trailing: isCurrent ? const Icon(Icons.check, color: Colors.green) : null,
                 onTap: () async {
                   Navigator.pop(context);
-                  // Передаем весь объект request, чтобы сервис мог взять из него userId и тип транспорта для пуша
                   await _service.updateRequestStatus(request, status);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -87,6 +87,16 @@ class _DispatcherRequestsScreenState extends State<DispatcherRequestsScreen> {
       backgroundColor: Colors.white,
       appBar: AppBar(
         title: const Text('Панель диспетчера'),
+        leading: IconButton(
+          icon: const Icon(Icons.people_outline, color: Colors.blueGrey),
+          onPressed: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => UsersListScreen()),
+            );
+          },
+          tooltip: 'Заводская сеть',
+        ),
         actions: [
           IconButton(
             icon: const Icon(Icons.account_circle_outlined),
@@ -124,34 +134,43 @@ class _DispatcherRequestsScreenState extends State<DispatcherRequestsScreen> {
                 if (snapshot.hasError) {
                   return Center(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(20),
+                      padding: const EdgeInsets.all(24),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.error_outline, color: Colors.red, size: 60),
-                          const SizedBox(height: 16),
+                          const Icon(Icons.error_outline, color: Colors.red, size: 80),
+                          const SizedBox(height: 20),
                           const Text(
-                            'НУЖЕН ИНДЕКС FIRESTORE',
-                            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 18),
-                          ),
-                          const SizedBox(height: 10),
-                          const Text(
-                            'Зажмите текст ниже, чтобы выделить и скопировать ссылку для настройки базы:',
+                            'ТРЕБУЕТСЯ НАСТРОЙКА FIRESTORE',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
+                            style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 20),
                           ),
-                          const SizedBox(height: 15),
+                          const SizedBox(height: 12),
+                          const Text(
+                            'Зажмите и выделите ссылку в рамке ниже, чтобы скопировать её и открыть в браузере:',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.black, fontSize: 16),
+                          ),
+                          const SizedBox(height: 20),
                           Container(
-                            padding: const EdgeInsets.all(12),
+                            padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               border: Border.all(color: Colors.red, width: 2),
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(12),
+                              boxShadow: [
+                                BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)
+                              ],
                             ),
                             child: SelectableText(
                               '${snapshot.error}',
                               textAlign: TextAlign.center,
-                              style: const TextStyle(color: Colors.black, fontSize: 13, fontFamily: 'monospace'),
+                              style: const TextStyle(
+                                color: Colors.black, 
+                                fontSize: 13, 
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.bold
+                              ),
                             ),
                           ),
                         ],

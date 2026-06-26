@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/firebase_service.dart';
 import 'home_screen.dart';
+import 'registration_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -35,19 +36,55 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Корпоративный транспорт')),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
+      appBar: AppBar(title: const Text('Вход в сеть УВЗ')),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            TextField(controller: _emailCtrl, decoration: const InputDecoration(labelText: 'Email')),
+            const Icon(Icons.factory, size: 100, color: Colors.blueGrey),
+            const SizedBox(height: 40),
+            TextField(
+              controller: _emailCtrl, 
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.email_outlined),
+              ),
+            ),
             const SizedBox(height: 16),
-            TextField(controller: _passCtrl, obscureText: true, decoration: const InputDecoration(labelText: 'Пароль')),
-            const SizedBox(height: 24),
+            TextField(
+              controller: _passCtrl, 
+              obscureText: true, 
+              decoration: const InputDecoration(
+                labelText: 'Пароль',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.lock_outline),
+              ),
+            ),
+            const SizedBox(height: 32),
             _isLoading
                 ? const CircularProgressIndicator()
-                : ElevatedButton(onPressed: _login, child: const Text('Войти')),
+                : Column(
+                    children: [
+                      ElevatedButton(
+                        onPressed: _login, 
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 50),
+                          backgroundColor: Colors.blueGrey[800],
+                          foregroundColor: Colors.white,
+                        ),
+                        child: const Text('Войти'),
+                      ),
+                      const SizedBox(height: 16),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => const RegistrationScreen()));
+                        },
+                        child: const Text('Нет аккаунта? Зарегистрироваться'),
+                      ),
+                    ],
+                  ),
           ],
         ),
       ),

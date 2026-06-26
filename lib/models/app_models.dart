@@ -7,8 +7,16 @@ class AppUser {
   final String role;
   final String department;
   final String fullName;
+  final String status;
 
-  AppUser({required this.uid, required this.email, required this.role, required this.department, required this.fullName});
+  AppUser({
+    required this.uid, 
+    required this.email, 
+    required this.role, 
+    required this.department, 
+    required this.fullName,
+    this.status = 'offline',
+  });
 
   factory AppUser.fromFirestore(DocumentSnapshot doc) {
     Map data = doc.data() as Map<String, dynamic>;
@@ -18,7 +26,35 @@ class AppUser {
       role: data['role'] ?? 'user',
       department: data['department'] ?? '',
       fullName: data['fullName'] ?? '',
+      status: data['status'] ?? 'offline',
     );
+  }
+}
+
+class ChatMessage {
+  final String id;
+  final String senderId;
+  final String text; // Зашифрованный текст
+  final Timestamp createdAt;
+
+  ChatMessage({required this.id, required this.senderId, required this.text, required this.createdAt});
+
+  factory ChatMessage.fromFirestore(DocumentSnapshot doc) {
+    Map data = doc.data() as Map<String, dynamic>;
+    return ChatMessage(
+      id: doc.id,
+      senderId: data['senderId'] ?? '',
+      text: data['text'] ?? '',
+      createdAt: data['createdAt'] ?? Timestamp.now(),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'senderId': senderId,
+      'text': text,
+      'createdAt': createdAt,
+    };
   }
 }
 
@@ -83,7 +119,6 @@ class TransportRequest {
     };
   }
 
-  // Хелпер для получения цвета статуса
   static Color getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'отправлено': return Colors.blue;
