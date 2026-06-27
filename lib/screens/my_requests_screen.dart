@@ -6,10 +6,10 @@ import 'login_screen.dart';
 import 'request_detail_screen.dart';
 import 'profile_screen.dart';
 import 'users_list_screen.dart';
+import 'groups_list_screen.dart';
 
 class MyRequestsScreen extends StatefulWidget {
   final AppUser currentUser;
-
   const MyRequestsScreen({super.key, required this.currentUser});
 
   @override
@@ -18,13 +18,18 @@ class MyRequestsScreen extends StatefulWidget {
 
 class _MyRequestsScreenState extends State<MyRequestsScreen> {
   final FirebaseService _service = FirebaseService();
+  int _selectedIndex = 0;
 
+  // Список заголовков для вкладок
+  final List<String> _titles = ['Мои заявки', 'Сотрудники', 'Группы'];
+
+  // Метод для выхода
   Future<void> _confirmSignOut() async {
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Выход'),
-        content: const Text('Вы уверены, что хотите выйти из аккаунта?'),
+        content: const Text('Вы уверены, что хотите выйти?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Отмена')),
           TextButton(
@@ -35,178 +40,107 @@ class _MyRequestsScreenState extends State<MyRequestsScreen> {
         ],
       ),
     );
-
     if (confirm == true) {
       await _service.signOut();
-      if (mounted) {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
-      }
+      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const LoginScreen()));
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[100],
+      backgroundColor: const Color(0xFFF5F7FB),
       appBar: AppBar(
-        title: const Text('Мои заявки'),
-        leading: IconButton(
-          icon: const Icon(Icons.people_outline, color: Colors.blueGrey),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => UsersListScreen()),
-            );
-          },
-          tooltip: 'Заводская сеть',
-        ),
+        title: Text(_titles[_selectedIndex], style: const TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.blueGrey[900],
+        foregroundColor: Colors.white,
         actions: [
           IconButton(
             icon: const Icon(Icons.account_circle_outlined),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ProfileScreen(currentUser: widget.currentUser),
-                ),
-              );
-            },
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => ProfileScreen(currentUser: widget.currentUser))),
           ),
-          IconButton(
-            icon: const Icon(Icons.exit_to_app),
-            onPressed: _confirmSignOut,
-          )
+          IconButton(icon: const Icon(Icons.exit_to_app), onPressed: _confirmSignOut),
         ],
       ),
-      body: StreamBuilder<List<TransportRequest>>(
-        stream: _service.getUserRequests(),
-        builder: (context, snapshot) {
-          if (snapshot.hasError) {
-            return Center(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.error_outline, color: Colors.red, size: 80),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'ТРЕБУЕТСЯ НАСТРОЙКА FIRESTORE',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 20),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Для работы приложения нужно создать индекс. Зажмите и выделите ссылку в рамке ниже, скопируйте её и откройте в браузере:',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.black, fontSize: 16, fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 20),
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(color: Colors.red, width: 2),
-                        borderRadius: BorderRadius.circular(12),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10)
-                        ],
-                      ),
-                      child: SelectableText(
-                        '${snapshot.error}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.black, 
-                          fontSize: 14, 
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.bold
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          
-          final requests = snapshot.data ?? [];
-          
-          if (requests.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.assignment_outlined, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  Text('У вас пока нет заявок', style: TextStyle(color: Colors.grey[600], fontSize: 16)),
-                ],
-              ),
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(12),
-            itemCount: requests.length,
-            itemBuilder: (context, index) {
-              final req = requests[index];
-              return Card(
-                elevation: 2,
-                margin: const EdgeInsets.only(bottom: 12),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: ListTile(
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  title: Text(
-                    req.transportType,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  subtitle: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const SizedBox(height: 4),
-                      Text('Дата: ${req.date}'),
-                      const SizedBox(height: 4),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: TransportRequest.getStatusColor(req.status).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          req.status,
-                          style: TextStyle(
-                            color: TransportRequest.getStatusColor(req.status),
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => RequestDetailScreen(request: req),
-                      ),
-                    );
-                  },
-                ),
-              );
-            },
-          );
-        },
+      // Переключаем контент в зависимости от выбранной вкладки
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          _buildRequestsList(),
+          UsersListScreen(), // Вкладка сотрудников
+          GroupsListScreen(), // Вкладка групп
+        ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => CreateRequestScreen(currentUser: widget.currentUser)),
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) => setState(() => _selectedIndex = index),
+        selectedItemColor: Colors.blueGrey[900],
+        unselectedItemColor: Colors.grey,
+        items: const [
+          BottomNavigationBarItem(icon: Icon(Icons.assignment_outlined), label: 'Заявки'),
+          BottomNavigationBarItem(icon: Icon(Icons.people_outline), label: 'Люди'),
+          BottomNavigationBarItem(icon: Icon(Icons.groups_outlined), label: 'Группы'),
+        ],
+      ),
+      floatingActionButton: _selectedIndex == 0 
+        ? FloatingActionButton.extended(
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => CreateRequestScreen(currentUser: widget.currentUser))),
+            label: const Text('Новая заявка'),
+            icon: const Icon(Icons.add),
+            backgroundColor: Colors.blueGrey[900],
+            foregroundColor: Colors.white,
+          )
+        : null,
+    );
+  }
+
+  // Вынесли список заявок в отдельный метод для чистоты кода
+  Widget _buildRequestsList() {
+    return StreamBuilder<List<TransportRequest>>(
+      stream: _service.getUserRequests(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) return _buildErrorState(snapshot.error.toString());
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        
+        final requests = snapshot.data ?? [];
+        if (requests.isEmpty) return const Center(child: Text('У вас пока нет заявок'));
+
+        return ListView.builder(
+          padding: const EdgeInsets.all(12),
+          itemCount: requests.length,
+          itemBuilder: (context, index) {
+            final req = requests[index];
+            return Card(
+              elevation: 2,
+              margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                title: Text(req.transportType, style: const TextStyle(fontWeight: FontWeight.bold)),
+                subtitle: Text('Дата: ${req.date}\nСтатус: ${req.status}'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => RequestDetailScreen(request: req))),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildErrorState(String error) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red, size: 60),
+            const SizedBox(height: 16),
+            const Text('ОШИБКА ИНДЕКСА', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 10),
+            SelectableText(error, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
+          ],
         ),
-        label: const Text('Новая заявка'),
-        icon: const Icon(Icons.add),
       ),
     );
   }

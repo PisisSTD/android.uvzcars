@@ -8,6 +8,7 @@ class AppUser {
   final String department;
   final String fullName;
   final String status;
+  final Timestamp? lastSeen;
 
   AppUser({
     required this.uid, 
@@ -16,6 +17,7 @@ class AppUser {
     required this.department, 
     required this.fullName,
     this.status = 'offline',
+    this.lastSeen,
   });
 
   factory AppUser.fromFirestore(DocumentSnapshot doc) {
@@ -27,6 +29,37 @@ class AppUser {
       department: data['department'] ?? '',
       fullName: data['fullName'] ?? '',
       status: data['status'] ?? 'offline',
+      lastSeen: data['lastSeen'],
+    );
+  }
+}
+
+class ChatGroup {
+  final String id;
+  final String name;
+  final String adminId;
+  final List<String> members;
+  final String? lastMessage;
+  final Timestamp? lastMessageTime;
+
+  ChatGroup({
+    required this.id,
+    required this.name,
+    required this.adminId,
+    required this.members,
+    this.lastMessage,
+    this.lastMessageTime,
+  });
+
+  factory ChatGroup.fromFirestore(DocumentSnapshot doc) {
+    Map data = doc.data() as Map<String, dynamic>;
+    return ChatGroup(
+      id: doc.id,
+      name: data['name'] ?? '',
+      adminId: data['adminId'] ?? '',
+      members: List<String>.from(data['members'] ?? []),
+      lastMessage: data['lastMessage'],
+      lastMessageTime: data['lastMessageTime'],
     );
   }
 }
@@ -34,26 +67,51 @@ class AppUser {
 class ChatMessage {
   final String id;
   final String senderId;
-  final String text; // Зашифрованный текст
+  final String senderName;
+  final String text; 
+  final String type;
+  final String? mediaUrl;
   final Timestamp createdAt;
+  final bool isRead;
+  final Map<String, dynamic>? replyTo;
 
-  ChatMessage({required this.id, required this.senderId, required this.text, required this.createdAt});
+  ChatMessage({
+    required this.id, 
+    required this.senderId, 
+    required this.senderName,
+    required this.text, 
+    this.type = 'text',
+    this.mediaUrl,
+    required this.createdAt,
+    this.isRead = false,
+    this.replyTo,
+  });
 
   factory ChatMessage.fromFirestore(DocumentSnapshot doc) {
     Map data = doc.data() as Map<String, dynamic>;
     return ChatMessage(
       id: doc.id,
       senderId: data['senderId'] ?? '',
+      senderName: data['senderName'] ?? 'Сотрудник',
       text: data['text'] ?? '',
+      type: data['type'] ?? 'text',
+      mediaUrl: data['mediaUrl'],
       createdAt: data['createdAt'] ?? Timestamp.now(),
+      isRead: data['isRead'] ?? false,
+      replyTo: data['replyTo'],
     );
   }
 
   Map<String, dynamic> toMap() {
     return {
       'senderId': senderId,
+      'senderName': senderName,
       'text': text,
+      'type': type,
+      'mediaUrl': mediaUrl,
       'createdAt': createdAt,
+      'isRead': isRead,
+      'replyTo': replyTo,
     };
   }
 }
@@ -119,6 +177,7 @@ class TransportRequest {
     };
   }
 
+  // Метод получения цвета (сделаем статическим для удобства вызова)
   static Color getStatusColor(String status) {
     switch (status.toLowerCase()) {
       case 'отправлено': return Colors.blue;

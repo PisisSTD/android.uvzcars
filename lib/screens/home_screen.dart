@@ -13,25 +13,51 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   final FirebaseService _service = FirebaseService();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _checkInitialStatus();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  void _checkInitialStatus() {
+    if (FirebaseAuth.instance.currentUser != null) {
+      _service.updateUserStatus('online');
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 2. Исправляем статус online/offline
+    if (state == AppLifecycleState.resumed) {
+      _service.updateUserStatus('online');
+    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.detached) {
+      _service.updateUserStatus('offline');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, authSnapshot) {
-        // Ждем, пока Firebase проверит наличие сохраненной сессии
         if (authSnapshot.connectionState == ConnectionState.waiting) {
           return const Scaffold(body: Center(child: CircularProgressIndicator()));
         }
 
-        // Если сессии нет — на экран логина
         if (!authSnapshot.hasData) {
           return const LoginScreen();
         }
 
-        // Если сессия есть, загружаем профиль из Firestore
         return FutureBuilder<AppUser?>(
           future: _service.getCurrentAppUser(),
           builder: (context, userSnapshot) {
@@ -40,31 +66,20 @@ class _HomeScreenState extends State<HomeScreen> {
             }
 
             final user = userSnapshot.data;
-
             if (user == null) {
               return Scaffold(
                 body: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Text("Ошибка: Профиль не найден"),
-                      ElevatedButton(
-                        onPressed: () => _service.signOut(),
-                        child: const Text("Выйти"),
-                      )
-                    ],
+                  child: ElevatedButton(
+                    onPressed: () => _service.signOut(),
+                    child: const Text("Ошибка профиля. Выйти"),
                   ),
                 ),
               );
             }
 
-            // ПРИ КАЖДОМ ВХОДЕ (в т.ч. автоматическом):
-            // 1. Ставим статус online
             _service.updateUserStatus('online');
-            // 2. Настраиваем пуши (токен обновится в базе)
             _service.setupPushNotifications();
 
-            // Перенаправляем на нужный экран
             if (user.role == 'dispatcher') {
               return DispatcherRequestsScreen(currentUser: user);
             } else {

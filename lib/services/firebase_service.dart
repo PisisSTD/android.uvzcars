@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -14,6 +15,9 @@ class FirebaseService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   final String _projectId = 'cars-9aa2a'; 
 
+  final String _cloudName = 'drjgshmqw';
+  final String _uploadPreset = 'uvz_preset';
+
   String get currentUserUid => _auth.currentUser?.uid ?? '';
 
   // --- СТАТУС ПОЛЬЗОВАТЕЛЯ ---
@@ -27,7 +31,153 @@ class FirebaseService {
     }
   }
 
-  // --- РЕГИСТРАЦИЯ И АВТОРИЗАЦИЯ ---
+  // --- МЕССЕНДЖЕР И ШИФРОВАНИЕ ---
+
+  String encryptMessage(String plainText, String keySeed) {
+    if (plainText.isEmpty) return "";
+    final key = encrypt.Key.fromUtf8(keySeed.padRight(32).substring(0, 32));
+    final iv = encrypt.IV.fromUtf8(keySeed.padRight(16).substring(0, 16)); 
+    final encrypter = encrypt.Encrypter(encrypt.AES(key));
+    return encrypter.encrypt(plainText, iv: iv).base64;
+  }
+
+  String decryptMessage(String encryptedBase64, String keySeed) {
+    if (encryptedBase64.isEmpty || encryptedBase64 == '[Медиа]' || !encryptedBase64.contains('==') && encryptedBase64.length < 15) {
+      return encryptedBase64;
+    }
+    try {
+      final key = encrypt.Key.fromUtf8(keySeed.padRight(32).substring(0, 32));
+      final iv = encrypt.IV.fromUtf8(keySeed.padRight(16).substring(0, 16)); 
+      final encrypter = encrypt.Encrypter(encrypt.AES(key));
+      return encrypter.decrypt64(encryptedBase64, iv: iv);
+    } catch (e) { return encryptedBase64; }
+  }
+
+  String getChatId(String uid1, String uid2) {
+    List<String> ids = [uid1, uid2];
+    ids.sort();
+    return ids.join('_');
+  }
+
+  // Личные сообщения
+  Future<void> sendMessage(String receiverId, String text, {String type = 'text', String? mediaUrl, Map<String, dynamic>? replyTo}) async {
+    final String senderId = currentUserUid;
+    final String chatId = getChatId(senderId, receiverId);
+    
+    final senderDoc = await _db.collection('users').doc(senderId).get();
+    final String senderName = senderDoc.get('fullName') ?? 'Сотрудник';
+    
+    final String encryptedText = encryptMessage(text, chatId);
+
+    await _db.collection('chats').doc(chatId).collection('messages').add({
+      'senderId': senderId,
+      'senderName': senderName,
+      'text': encryptedText,
+      'type': type,
+      'mediaUrl': mediaUrl,
+      'createdAt': FieldValue.serverTimestamp(),
+      'isRead': false,
+      'replyTo': replyTo,
+    });
+
+    await _db.collection('chats').doc(chatId).set({
+      'lastMessage': type == 'text' ? encryptedText : '[Медиа]',
+      'lastMessageTime': FieldValue.serverTimestamp(),
+      'participants': [senderId, receiverId],
+    }, SetOptions(merge: true));
+
+    _sendNotificationToUser(receiverId, senderId, type);
+  }
+
+  Future<void> markMessagesAsRead(String receiverId) async {
+    final String chatId = getChatId(currentUserUid, receiverId);
+    final messages = await _db.collection('chats').doc(chatId).collection('messages')
+        .where('senderId', isEqualTo: receiverId)
+        .where('isRead', isEqualTo: false).get();
+    for (var doc in messages.docs) { await doc.reference.update({'isRead': true}); }
+  }
+
+  Stream<List<ChatMessage>> getMessages(String receiverId) {
+    final String chatId = getChatId(currentUserUid, receiverId);
+    return _db.collection('chats').doc(chatId).collection('messages')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((sn) => sn.docs.map((doc) => ChatMessage.fromFirestore(doc)).toList());
+  }
+
+  // Групповые сообщения
+  // --- ДОБАВЬ ЭТОТ МЕТОД В КЛАСС FIREBASE_SERVICE ---
+  Future<void> createGroup(String groupName, List<String> memberIds) async {
+    // Добавляем текущего пользователя (создателя) в список участников, если его там нет
+    if (!memberIds.contains(currentUserUid)) {
+      memberIds.add(currentUserUid);
+    }
+
+    await _db.collection('groups').add({
+      'name': groupName,
+      'members': memberIds,
+      'createdBy': currentUserUid,
+      'createdAt': FieldValue.serverTimestamp(),
+      'lastMessage': 'Группа создана',
+      'lastMessageTime': FieldValue.serverTimestamp(),
+    });
+  }
+  Future<void> sendGroupMessage(String groupId, String text, {String type = 'text', String? mediaUrl, Map<String, dynamic>? replyTo}) async {
+    final senderDoc = await _db.collection('users').doc(currentUserUid).get();
+    final String senderName = senderDoc.get('fullName') ?? 'Сотрудник';
+    
+    final String encryptedText = encryptMessage(text, groupId);
+
+    await _db.collection('groups').doc(groupId).collection('messages').add({
+      'senderId': currentUserUid,
+      'senderName': senderName,
+      'text': encryptedText,
+      'type': type,
+      'mediaUrl': mediaUrl,
+      'createdAt': FieldValue.serverTimestamp(),
+      'replyTo': replyTo,
+    });
+    
+    await _db.collection('groups').doc(groupId).update({
+      'lastMessage': type == 'text' ? encryptedText : '[Медиа]', 
+      'lastMessageTime': FieldValue.serverTimestamp()
+    });
+  }
+
+  Stream<List<ChatMessage>> getGroupMessages(String groupId) {
+    return _db.collection('groups').doc(groupId).collection('messages')
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((sn) => sn.docs.map((doc) => ChatMessage.fromFirestore(doc)).toList());
+  }
+
+  // --- МЕДИА ---
+
+  Future<String?> uploadMedia(File file, String type) async {
+    try {
+      final url = Uri.parse('https://api.cloudinary.com/v1_1/$_cloudName/upload');
+      var request = http.MultipartRequest('POST', url)
+        ..fields['upload_preset'] = _uploadPreset
+        ..files.add(await http.MultipartFile.fromPath('file', file.path));
+
+      var response = await request.send();
+      var responseData = await response.stream.bytesToString();
+      
+      if (response.statusCode == 200) {
+        var json = jsonDecode(responseData);
+        return json['secure_url'];
+      }
+      return null;
+    } catch (e) { return null; }
+  }
+
+  // --- АВТОРИЗАЦИЯ И ПОЛЬЗОВАТЕЛИ ---
+
+  Future<UserCredential?> signIn(String email, String password) async {
+    UserCredential res = await _auth.signInWithEmailAndPassword(email: email, password: password);
+    await updateUserStatus('online');
+    return res;
+  }
 
   Future<UserCredential?> signUp(String email, String password, String fullName, String department, String role) async {
     try {
@@ -46,82 +196,9 @@ class FirebaseService {
     } catch (e) { rethrow; }
   }
 
-  Future<UserCredential?> signIn(String email, String password) async {
-    UserCredential res = await _auth.signInWithEmailAndPassword(email: email, password: password);
-    await updateUserStatus('online');
-    return res;
-  }
-
   Future<void> signOut() async {
     await updateUserStatus('offline');
     await _auth.signOut();
-  }
-
-  // --- МЕССЕНДЖЕР И ШИФРОВАНИЕ ---
-
-  String getChatId(String uid1, String uid2) {
-    List<String> ids = [uid1, uid2];
-    ids.sort();
-    return ids.join('_');
-  }
-
-  String encryptMessage(String plainText, String chatId) {
-    final key = encrypt.Key.fromUtf8(chatId.padRight(32).substring(0, 32));
-    final iv = encrypt.IV.fromUtf8(chatId.substring(0, 16)); 
-    final encrypter = encrypt.Encrypter(encrypt.AES(key));
-    return encrypter.encrypt(plainText, iv: iv).base64;
-  }
-
-  String decryptMessage(String encryptedBase64, String chatId) {
-    try {
-      final key = encrypt.Key.fromUtf8(chatId.padRight(32).substring(0, 32));
-      final iv = encrypt.IV.fromUtf8(chatId.substring(0, 16)); 
-      final encrypter = encrypt.Encrypter(encrypt.AES(key));
-      return encrypter.decrypt64(encryptedBase64, iv: iv);
-    } catch (e) { return "[Ошибка расшифровки]"; }
-  }
-
-  Future<void> sendMessage(String receiverId, String text) async {
-    final String senderId = currentUserUid;
-    final String chatId = getChatId(senderId, receiverId);
-    final String encryptedText = encryptMessage(text, chatId);
-
-    await _db.collection('chats').doc(chatId).collection('messages').add({
-      'senderId': senderId,
-      'text': encryptedText,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
-
-    await _db.collection('chats').doc(chatId).set({
-      'lastMessage': encryptedText,
-      'lastMessageTime': FieldValue.serverTimestamp(),
-      'participants': [senderId, receiverId],
-    }, SetOptions(merge: true));
-
-    // ОТПРАВКА УВЕДОМЛЕНИЯ О СООБЩЕНИИ
-    final senderDoc = await _db.collection('users').doc(senderId).get();
-    final receiverDoc = await _db.collection('users').doc(receiverId).get();
-
-    if (senderDoc.exists && receiverDoc.exists) {
-      final senderName = senderDoc.get('fullName') ?? 'Сотрудник';
-      final receiverToken = receiverDoc.data()?['fcmToken'];
-
-      if (receiverToken != null) {
-        await _sendPushV1(
-          receiverToken,
-          senderName,
-          'Отправил(а) вам сообщение',
-        );
-      }
-    }
-  }
-
-  Stream<List<ChatMessage>> getMessages(String receiverId) {
-    final String chatId = getChatId(currentUserUid, receiverId);
-    return _db.collection('chats').doc(chatId).collection('messages')
-        .orderBy('createdAt', descending: true)
-        .snapshots()
-        .map((sn) => sn.docs.map((doc) => ChatMessage.fromFirestore(doc)).toList());
   }
 
   Stream<AppUser> getUserStream(String uid) {
@@ -135,7 +212,9 @@ class FirebaseService {
     );
   }
 
-  // --- ЗАЯВКИ И ПУШИ ---
+  Stream<List<ChatGroup>> getMyGroups() {
+    return _db.collection('groups').where('members', arrayContains: currentUserUid).snapshots().map((sn) => sn.docs.map((doc) => ChatGroup.fromFirestore(doc)).toList());
+  }
 
   Future<AppUser?> getCurrentAppUser() async {
     if (_auth.currentUser == null) return null;
@@ -143,12 +222,39 @@ class FirebaseService {
     return doc.exists ? AppUser.fromFirestore(doc) : null;
   }
 
-  Future<void> updateRequestStatus(TransportRequest request, String newStatus) async {
-    await _db.collection('requests').doc(request.id).update({'status': newStatus});
-    final userDoc = await _db.collection('users').doc(request.userId).get();
-    final token = userDoc.data()?['fcmToken'];
+  // --- СИСТЕМНОЕ И ЗАЯВКИ ---
+
+  Future<void> setupPushNotifications() async {
+    FirebaseMessaging messaging = FirebaseMessaging.instance;
+    await messaging.requestPermission(alert: true, badge: true, sound: true);
+    String? token = await messaging.getToken();
     if (token != null) {
-      await _sendPushV1(token, 'Статус изменен', 'Заявка (${request.transportType}): $newStatus');
+      await _db.collection('users').doc(currentUserUid).set({'fcmToken': token}, SetOptions(merge: true));
+    }
+  }
+
+  Future<String> _getAccessToken() async {
+    final serviceAccountJson = await rootBundle.loadString('assets/service-account.json');
+    final accountCredentials = auth.ServiceAccountCredentials.fromJson(serviceAccountJson);
+    return (await auth.clientViaServiceAccount(accountCredentials, ['https://www.googleapis.com/auth/firebase.messaging'])).credentials.accessToken.data;
+  }
+
+  Future<void> _sendPushV1(String token, String title, String body) async {
+    try {
+      final String accessToken = await _getAccessToken();
+      await http.post(Uri.parse('https://fcm.googleapis.com/v1/projects/$_projectId/messages:send'),
+        headers: <String, String>{'Content-Type': 'application/json', 'Authorization': 'Bearer $accessToken'},
+        body: jsonEncode({'message': {'token': token, 'notification': {'title': title, 'body': body}}}),
+      );
+    } catch (e) {}
+  }
+
+  void _sendNotificationToUser(String receiverId, String senderId, String type) async {
+    final receiverDoc = await _db.collection('users').doc(receiverId).get();
+    final senderDoc = await _db.collection('users').doc(senderId).get();
+    if (receiverDoc.exists && senderDoc.exists) {
+      final token = receiverDoc.data()?['fcmToken'];
+      if (token != null) await _sendPushV1(token, senderDoc.get('fullName'), type == 'text' ? 'Новое сообщение' : 'Медиафайл');
     }
   }
 
@@ -158,50 +264,22 @@ class FirebaseService {
 
   Stream<List<TransportRequest>> getUserRequests() {
     if (_auth.currentUser == null) return Stream.value([]);
-    return _db.collection('requests').where('userId', isEqualTo: _auth.currentUser!.uid)
-        .orderBy('createdAt', descending: true).snapshots()
-        .map((sn) => sn.docs.map((doc) => TransportRequest.fromFirestore(doc)).toList());
+    return _db.collection('requests').where('userId', isEqualTo: currentUserUid).orderBy('createdAt', descending: true).snapshots().map((sn) => sn.docs.map((doc) => TransportRequest.fromFirestore(doc)).toList());
   }
 
   Stream<List<TransportRequest>> getAllRequests() {
-    return _db.collection('requests').orderBy('createdAt', descending: true).snapshots()
-        .map((sn) => sn.docs.map((doc) => TransportRequest.fromFirestore(doc)).toList());
+    return _db.collection('requests').orderBy('createdAt', descending: true).snapshots().map((sn) => sn.docs.map((doc) => TransportRequest.fromFirestore(doc)).toList());
   }
 
-  Future<void> setupPushNotifications() async {
-    FirebaseMessaging messaging = FirebaseMessaging.instance;
-    await messaging.requestPermission(alert: true, badge: true, sound: true);
-    String? token = await messaging.getToken();
-    if (token != null) {
-      await _db.collection('users').doc(_auth.currentUser!.uid).set({'fcmToken': token}, SetOptions(merge: true));
-    }
-  }
-
-  Future<String> _getAccessToken() async {
-    final serviceAccountJson = await rootBundle.loadString('assets/service-account.json');
-    final accountCredentials = auth.ServiceAccountCredentials.fromJson(serviceAccountJson);
-    final scopes = ['https://www.googleapis.com/auth/firebase.messaging'];
-    final client = await auth.clientViaServiceAccount(accountCredentials, scopes);
-    return client.credentials.accessToken.data;
-  }
-
-  Future<void> _sendPushV1(String token, String title, String body) async {
-    try {
-      final String accessToken = await _getAccessToken();
-      final String fcmUrl = 'https://fcm.googleapis.com/v1/projects/$_projectId/messages:send';
-      await http.post(Uri.parse(fcmUrl),
-        headers: <String, String>{'Content-Type': 'application/json', 'Authorization': 'Bearer $accessToken'},
-        body: jsonEncode({'message': {'token': token, 'notification': {'title': title, 'body': body}}}),
-      );
-    } catch (e) { if (kDebugMode) print('Push error: $e'); }
+  Future<void> updateRequestStatus(TransportRequest request, String status) async {
+    await _db.collection('requests').doc(request.id).update({'status': status});
   }
 
   Future<bool> verifySignature(String password) async {
     try {
       User? user = _auth.currentUser;
       if (user != null && user.email != null) {
-        AuthCredential credential = EmailAuthProvider.credential(email: user.email!, password: password);
-        await user.reauthenticateWithCredential(credential);
+        await user.reauthenticateWithCredential(EmailAuthProvider.credential(email: user.email!, password: password));
         return true;
       }
       return false;
